@@ -2,7 +2,9 @@ pipeline {
     agent any
 
     tools {
-        nodejs 'NodeJS18' 
+        nodejs 'NodeJS18'
+        jdk 'JDK17'
+        
     }
 
     environment {
@@ -30,14 +32,16 @@ pipeline {
                 sh 'npm run build'
             }
         }
-        
-        stage('Upload to Nexus') {
+
+        stage('JENKINS TO NEXUS') {
             steps {
-                dir('backend') {
-                    sh 'mvn deploy -DskipTests'
-                }
+            withMaven(jdk: 'JDK17', traceability: true) {
+                sh 'npm install'
+                sh 'npm run build'
             }
         }
+    }
+        
 
         stage('Sonar') {
             steps {
