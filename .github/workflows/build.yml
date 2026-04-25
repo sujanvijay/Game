@@ -17,11 +17,11 @@ jobs:
 
     # 🔹 Checkout
     - name: Checkout Code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     # 🔹 Setup Node
     - name: Setup NodeJS
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v5
       with:
         node-version: 18
 
