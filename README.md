@@ -153,3 +153,4 @@ kubectl delete ns game-2048
 **Note:**
 
 Kubectl kustomize subcommand has a delete option that can be used - `kubectl delete -k game-2048-example/kustomize`. But, it won't work well in this case because if the namespace is deleted first then the remaining operations will fail.
+
