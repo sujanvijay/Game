@@ -1,33 +1,71 @@
-name: Build Node App
+name: Full DevOps Pipeline
 
 on:
   push:
     branches: [ "main" ]
 
 jobs:
-  build:
+  pipeline:
     runs-on: ubuntu-latest
 
+    env:
+      DOCKER_USER: surya8442
+      IMAGE_NAME: sliding-block-puzzle-game
+      IMAGE_TAG: v1
+
     steps:
+
+    # 🔹 Checkout
     - name: Checkout Code
       uses: actions/checkout@v3
 
-    - name: Setup Node
+    # 🔹 Setup Node
+    - name: Setup NodeJS
       uses: actions/setup-node@v4
       with:
         node-version: 18
 
+    # 🔹 Install Dependencies
     - name: Install Dependencies
       run: npm install
 
-    - name: Build (Optional)
-      run: npm run build --if-present
+    # 🔹 Build
+    - name: Build Application
+      run: npm run build
 
-    - name: Create ZIP
-      run: zip -r app.zip . -x "node_modules/*" ".git/*"
+    # 🔹 SonarQube Scan
+    - name: SonarQube Scan
+      run: |
+        npm install -g sonar-scanner
+        sonar-scanner \
+          -Dsonar.projectKey=puzzlegame \
+          -Dsonar.sources=src \
+          -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
+          -Dsonar.login=${{ secrets.SONAR_TOKEN }}
 
-    - name: Store Artifact
-      uses: actions/upload-artifact@v4
+    # 🔹 Docker Build
+    - name: Build Docker Image
+      run: docker build -t $DOCKER_USER/$IMAGE_NAME:$IMAGE_TAG .
+
+    # 🔹 Docker Login
+    - name: Docker Login
+      run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+    # 🔹 Push Image
+    - name: Push Docker Image
+      run: docker push $DOCKER_USER/$IMAGE_NAME:$IMAGE_TAG
+
+    # 🔹 Configure AWS
+    - name: Configure AWS
+      uses: aws-actions/configure-aws-credentials@v2
       with:
-        name: nodejs-app
-        path: app.zip
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+        aws-region: ap-south-1
+
+    # 🔹 Deploy to EKS
+    - name: Deploy to Kubernetes
+      run: |
+        aws eks update-kubeconfig --region ap-south-1 --name mycluster
+        kubectl apply -f deployment.yml
+        kubectl apply -f service.yml
