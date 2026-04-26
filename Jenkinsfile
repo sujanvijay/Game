@@ -10,8 +10,8 @@ pipeline {
         IMAGE_NAME = "sliding-block-puzzle-game"
         IMAGE_TAG = "v1"
         KUBECONFIG = '/var/lib/jenkins/.kube/config'
-
         NEXUS_URL = "http://43.204.30.42:8081/repository/puzzlegame"
+        RECIPIENTS = "suryakandipalli1@gmail.com" 
     }
 
     stages {
@@ -151,7 +151,7 @@ pipeline {
             emailext(
                 subject: "SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                 body: "Build SUCCESS 🎉\n\nURL: ${env.BUILD_URL}",
-                to: "${RECIPIENTS}"
+                to: "${env.RECIPIENTS}"
             )
         }
 
@@ -159,8 +159,12 @@ pipeline {
             emailext(
                 subject: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                 body: "Build FAILED ❌\n\nURL: ${env.BUILD_URL}",
-                to: "${RECIPIENTS}"
+                to: "${env.RECIPIENTS}"
             )
+        }
+
+        always {
+            archiveArtifacts artifacts: 'app-*.tar.gz', fingerprint: true, allowEmptyArchive: true
         }
     }
 }
