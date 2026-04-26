@@ -119,7 +119,7 @@ pipeline {
                 kubectl apply -f deployment.yml
                 kubectl apply -f service.yml
 
-                kubectl rollout status deployment/sliding-block-puzzle
+                
                 '''
             }
         }
