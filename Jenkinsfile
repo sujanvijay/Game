@@ -5,7 +5,7 @@ pipeline {
         nodejs 'NodeJS18'
         jdk 'JDK17'
     }
- 
+
     environment {
         DOCKER_USER = "surya8442"
         IMAGE_NAME = "sliding-block-puzzle-game"
@@ -24,6 +24,28 @@ pipeline {
         stage('Install Dependencies') {
             steps {
                 sh 'npm install'
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('sq') {
+                    sh '''
+                        sonar-scanner \
+                        -Dsonar.projectKey=game \
+                        -Dsonar.sources=src \
+                        -Dsonar.projectName=game-App \
+                        -Dsonar.projectVersion=${BUILD_NUMBER}
+                    '''
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 2, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
             }
         }
 
@@ -60,15 +82,54 @@ pipeline {
                 '''
             }
         }
-
-    }   
+    }
 
     post {
-        always {
-            echo 'Pipeline finished.'
+
+        success {
+            mail to: 'suryakandipalli@gmail.com',
+            subject: "SUCCESS: NodeJS Pipeline - ${JOB_NAME}",
+            body: """
+Hi Surya,
+
+Pipeline SUCCESSFUL 🚀
+
+Project: Zomato-App (NodeJS)
+Build Number: ${BUILD_NUMBER}
+Docker Image: ${DOCKER_USER}/${IMAGE_NAME}:${IMAGE_TAG}
+
+All stages completed successfully:
+✔ Git Checkout
+✔ Build
+✔ SonarQube Passed
+✔ Docker Push
+✔ Kubernetes Deploy
+
+Regards,
+Jenkins CI/CD
+"""
         }
+
         failure {
-            echo 'Pipeline failed!'
+            mail to: 'suryakandipalli@gmail.com',
+            subject: "FAILED: NodeJS Pipeline - ${JOB_NAME}",
+            body: """
+Hi Surya,
+
+Pipeline FAILED ❌
+
+Project: Zomato-App (NodeJS)
+Build Number: ${BUILD_NUMBER}
+
+Please check Jenkins logs for error details.
+
+Regards,
+Jenkins CI/CD
+"""
+        }
+
+        always {
+            echo 'Pipeline execution completed.'
         }
     }
 }
