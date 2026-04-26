@@ -32,11 +32,11 @@ pipeline {
             steps {
                 withSonarQubeEnv('sq') {
                     sh '''
-                        /opt/sonar-scanner/bin/sonar-scanner \
-                        -Dsonar.projectKey=game \
-                        -Dsonar.sources=src \
-                        -Dsonar.projectName=game-App \
-                        -Dsonar.projectVersion=${BUILD_NUMBER}
+                    /opt/sonar-scanner/bin/sonar-scanner \
+                    -Dsonar.projectKey=game \
+                    -Dsonar.sources=src \
+                    -Dsonar.projectName=game-App \
+                    -Dsonar.projectVersion=${BUILD_NUMBER}
                     '''
                 }
             }
@@ -51,11 +51,11 @@ pipeline {
         stage('Package Artifact') {
             steps {
                 sh '''
-                    if [ -d dist ]; then
-                        tar -czf app-${BUILD_NUMBER}.tar.gz dist
-                    else
-                        tar -czf app-${BUILD_NUMBER}.tar.gz .
-                    fi
+                if [ -d dist ]; then
+                    tar -czf app-${BUILD_NUMBER}.tar.gz dist
+                else
+                    tar -czf app-${BUILD_NUMBER}.tar.gz .
+                fi
                 '''
             }
         }
@@ -68,9 +68,9 @@ pipeline {
                     passwordVariable: 'NEXUS_PASS'
                 )]) {
                     sh '''
-                        curl -v -u $NEXUS_USER:$NEXUS_PASS \
-                        --upload-file app-${BUILD_NUMBER}.tar.gz \
-                        $NEXUS_URL/app-${BUILD_NUMBER}.tar.gz
+                    curl -v -u $NEXUS_USER:$NEXUS_PASS \
+                    --upload-file app-${BUILD_NUMBER}.tar.gz \
+                    $NEXUS_URL/app-${BUILD_NUMBER}.tar.gz
                     '''
                 }
             }
@@ -90,19 +90,57 @@ pipeline {
                     passwordVariable: 'PASS'
                 )]) {
                     sh '''
-                        echo $PASS | docker login -u $USER --password-stdin
-                        docker push $DOCKER_USER/$IMAGE_NAME:$IMAGE_TAG
+                    echo $PASS | docker login -u $USER --password-stdin
+                    docker push $DOCKER_USER/$IMAGE_NAME:$IMAGE_TAG
                     '''
                 }
+            }
+        }
+
+        stage('Install Helm') {
+            steps {
+                sh '''
+                curl -LO https://get.helm.sh/helm-v3.14.0-linux-amd64.tar.gz
+                tar -zxvf helm-v3.14.0-linux-amd64.tar.gz
+                mv linux-amd64/helm ./helm
+                chmod +x ./helm
+                '''
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
                 sh '''
-                    aws eks update-kubeconfig --region ap-south-1 --name mycluster
-                    kubectl apply -f deployment.yml
-                    kubectl apply -f service.yml
+                aws eks update-kubeconfig --region ap-south-1 --name mycluster
+                kubectl apply -f deployment.yml
+                kubectl apply -f service.yml
+                '''
+            }
+        }
+
+        stage('Deploy Monitoring') {
+            steps {
+                sh '''
+                ./helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
+                ./helm repo update
+
+                ./helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
+                --namespace monitoring --create-namespace
+                '''
+            }
+        }
+
+        stage('Expose Grafana') {
+            steps {
+                sh '''
+                echo "Waiting for Grafana service..."
+                sleep 30
+
+                kubectl get svc -n monitoring
+
+                kubectl patch svc monitoring-grafana \
+                -n monitoring \
+                -p '{"spec": {"type": "LoadBalancer"}}'
                 '''
             }
         }
@@ -110,15 +148,19 @@ pipeline {
 
     post {
         success {
-            echo "SUCCESS: Pipeline completed successfully"
+            emailext(
+                subject: "SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: "Build SUCCESS 🎉\n\nURL: ${env.BUILD_URL}",
+                to: "${RECIPIENTS}"
+            )
         }
 
         failure {
-            echo "FAILED: Check Jenkins logs for errors"
-        }
-
-        always {
-            echo "Pipeline execution completed"
+            emailext(
+                subject: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: "Build FAILED ❌\n\nURL: ${env.BUILD_URL}",
+                to: "${RECIPIENTS}"
+            )
         }
     }
 }
