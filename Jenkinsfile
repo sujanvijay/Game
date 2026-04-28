@@ -110,7 +110,7 @@ pipeline {
         stage('Deploy to Kubernetes') {
             steps {
                 sh '''
-                aws eks update-kubeconfig --region ap-south-1 --name mycluster
+                aws eks update-kubeconfig --region us-east-1 --name mycluster
 
                 kubectl apply -f deployment.yml
                 kubectl apply -f service.yml
