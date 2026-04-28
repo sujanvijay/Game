@@ -34,13 +34,16 @@ pipeline {
         stage('SonarQube Analysis') {
     steps {
         withSonarQubeEnv('sq') {
-            sh '''
-            sonar-scanner \
-            -Dsonar.projectKey=game \
-            -Dsonar.sources=src \
-            -Dsonar.projectName=game-App \
-            -Dsonar.projectVersion=3
-            '''
+            script {
+                def scannerHome = tool 'sonar-scanner'
+                sh """
+                ${scannerHome}/bin/sonar-scanner \
+                -Dsonar.projectKey=game \
+                -Dsonar.sources=src \
+                -Dsonar.projectName=game-App \
+                -Dsonar.projectVersion=3
+                """
+            }
         }
     }
 }
