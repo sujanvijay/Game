@@ -6,12 +6,12 @@ pipeline {
     }
 
     environment {
-        DOCKER_USER = "surya8442"
+        DOCKER_USER = "sujanvijay"
         IMAGE_NAME = "sliding-block-puzzle-game"
         IMAGE_TAG = "${BUILD_NUMBER}"
         KUBECONFIG = '/var/lib/jenkins/.kube/config'
         NEXUS_URL = "http://13.232.28.159:8081/repository/puzzlegame"
-        RECIPIENTS = "suryakandipalli@gmail.com"
+        RECIPIENTS = "sujanvijay2311@gmail.com"
 
         CLUSTER_NAME = "mycluster"
         PROJECT_NAME = "Sliding Puzzle Game"
