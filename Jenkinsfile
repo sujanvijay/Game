@@ -2,14 +2,16 @@ pipeline {
     agent any
 
     tools {
-        nodejs 'NodeJS18'
+        nodejs 'NodeJS18'   // Uses NodeJS configured in Jenkins
     }
 
     environment {
         DOCKER_USER = "sujanvijay"
         IMAGE_NAME = "sliding-block-puzzle-game"
         IMAGE_TAG = "${BUILD_NUMBER}"
+
         KUBECONFIG = '/var/lib/jenkins/.kube/config'
+
         NEXUS_URL = "http://100.26.41.33:8081/repository/nodejs-game/"
         RECIPIENTS = "sujanvijay2311@gmail.com"
 
@@ -19,41 +21,47 @@ pipeline {
 
     stages {
 
-        stage('Checkout') {
+        // ===============================
+        stage('Checkout Code') {
             steps {
                 git branch: 'main', url: 'https://github.com/sujanvijay/Game.git'
             }
         }
 
+        // ===============================
         stage('Install Dependencies') {
             steps {
                 sh 'npm install'
             }
         }
 
+        // ===============================
         stage('SonarQube Analysis') {
-    steps {
-        withSonarQubeEnv('sq') {
-            script {
-                def scannerHome = tool 'sonar-scanner'
-                sh """
-                ${scannerHome}/bin/sonar-scanner \
-                -Dsonar.projectKey=game \
-                -Dsonar.sources=src \
-                -Dsonar.projectName=game-App \
-                -Dsonar.projectVersion=3
-                """
+            steps {
+                withSonarQubeEnv('sq') {
+                    script {
+                        def scannerHome = tool 'sonar-scanner'
+
+                        sh """
+                        ${scannerHome}/bin/sonar-scanner \
+                        -Dsonar.projectKey=game \
+                        -Dsonar.sources=src \
+                        -Dsonar.projectName=game-App \
+                        -Dsonar.projectVersion=3
+                        """
+                    }
+                }
             }
         }
-    }
-}
 
-        stage('Build') {
+        // ===============================
+        stage('Build Application') {
             steps {
                 sh 'npm run build'
             }
         }
 
+        // ===============================
         stage('Package Artifact') {
             steps {
                 sh '''
@@ -66,6 +74,7 @@ pipeline {
             }
         }
 
+        // ===============================
         stage('Upload to Nexus') {
             steps {
                 withCredentials([usernamePassword(
@@ -82,6 +91,7 @@ pipeline {
             }
         }
 
+        // ===============================
         stage('Docker Build') {
             steps {
                 sh '''
@@ -91,6 +101,7 @@ pipeline {
             }
         }
 
+        // ===============================
         stage('Push to DockerHub') {
             steps {
                 withCredentials([usernamePassword(
@@ -107,10 +118,11 @@ pipeline {
             }
         }
 
+        // ===============================
         stage('Deploy to Kubernetes') {
             steps {
                 sh '''
-                aws eks update-kubeconfig --region us-east-1 --name mycluster
+                aws eks update-kubeconfig --region us-east-1 --name $CLUSTER_NAME
 
                 kubectl apply -f deployment.yml
                 kubectl apply -f service.yml
@@ -118,35 +130,41 @@ pipeline {
             }
         }
 
-        stage('Install Helm') {
+        // ===============================
+        stage('Install Helm (GLOBAL FIX)') {
             steps {
                 sh '''
-                if [ ! -f helm ]; then
+                if ! command -v helm &> /dev/null
+                then
+                    echo "Installing Helm globally..."
+
                     curl -LO https://get.helm.sh/helm-v3.14.0-linux-amd64.tar.gz
                     tar -zxvf helm-v3.14.0-linux-amd64.tar.gz
-                    mv linux-amd64/helm ./helm
-                    chmod +x ./helm
+                    sudo mv linux-amd64/helm /usr/local/bin/helm
                 fi
+
+                helm version
                 '''
             }
         }
 
-        stage('Deploy Monitoring') {
+        // ===============================
+        stage('Deploy Monitoring (Prometheus + Grafana)') {
             steps {
                 sh '''
-                ./helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
-                ./helm repo update
+                helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
+                helm repo update
 
-                ./helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
+                helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
                 --namespace monitoring --create-namespace
                 '''
             }
         }
 
+        // ===============================
         stage('Expose Grafana') {
             steps {
                 sh '''
-                echo "Waiting for Grafana..."
                 sleep 30
 
                 kubectl patch svc monitoring-grafana \
@@ -156,6 +174,7 @@ pipeline {
             }
         }
 
+        // ===============================
         stage('Expose Prometheus') {
             steps {
                 sh '''
@@ -167,7 +186,7 @@ pipeline {
         }
     }
 
-    // ===========================
+    // ==========================================
     post {
 
         success {
@@ -179,7 +198,8 @@ pipeline {
                 def GRAFANA_URL = ""
                 def PROM_URL = ""
 
-                for (int i = 0; i < 5; i++) {
+                // Retry logic (VERY IMPORTANT for AWS LB delay)
+                for (int i = 0; i < 6; i++) {
 
                     APP_URL = sh(
                         script: "kubectl get svc puzzle-game-service -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' || true",
@@ -205,68 +225,61 @@ pipeline {
 
                 def DOCKER_IMAGE = "${DOCKER_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
 
+                // ================= EMAIL FIX =================
                 emailext(
-                    subject: "🚀 Deployment Successful - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    subject: "🚀 SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                     mimeType: 'text/html',
+                    to: "${env.RECIPIENTS}",
                     body: """
                     <html>
-                    <body style="font-family: Arial;">
+                    <body>
 
-                    <h2 style="color:green;">🎉 Deployment Successful</h2>
+                    <h2 style="color:green;">Deployment Successful</h2>
 
-                    <h3>📌 Project Details</h3>
-                    <ul>
-                        <li><b>Project:</b> ${PROJECT_NAME}</li>
-                        <li><b>Cluster:</b> ${CLUSTER_NAME}</li>
-                    </ul>
+                    <p><b>Project:</b> ${PROJECT_NAME}</p>
+                    <p><b>Cluster:</b> ${CLUSTER_NAME}</p>
 
-                    <h3>🐳 Docker Image</h3>
+                    <h3>Docker Image</h3>
                     <p>${DOCKER_IMAGE}</p>
 
-                    <h3>🌐 Application</h3>
-                    <a href="http://${APP_URL}">Open Application</a>
+                    <h3>Application</h3>
+                    <a href="http://${APP_URL}">${APP_URL}</a>
 
-                    <h3>📊 Grafana</h3>
-                    <a href="http://${GRAFANA_URL}">Open Grafana</a>
+                    <h3>Grafana</h3>
+                    <a href="http://${GRAFANA_URL}">${GRAFANA_URL}</a>
 
-                    <h3>🔥 Prometheus</h3>
-                    <a href="http://${PROM_URL}:9090">Open Prometheus</a>
+                    <h3>Prometheus</h3>
+                    <a href="http://${PROM_URL}:9090">${PROM_URL}</a>
 
-                    <h3>🛠 Jenkins</h3>
-                    <ul>
-                        <li>Job: ${env.JOB_NAME}</li>
-                        <li>Build: ${env.BUILD_NUMBER}</li>
-                        <li><a href="${env.BUILD_URL}">Open Build</a></li>
-                    </ul>
+                    <h3>Jenkins</h3>
+                    <a href="${env.BUILD_URL}">Build Link</a>
 
                     </body>
                     </html>
-                    """,
-                    to: "${env.RECIPIENTS}"
+                    """
                 )
             }
         }
 
         failure {
             emailext(
-                subject: "❌ Deployment Failed - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                subject: "❌ FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                 mimeType: 'text/html',
+                to: "${env.RECIPIENTS}",
                 body: """
                 <html>
-                <body style="font-family: Arial;">
+                <body>
 
-                <h2 style="color:red;">❌ Deployment Failed</h2>
+                <h2 style="color:red;">Deployment Failed</h2>
 
                 <p><b>Project:</b> Sliding Puzzle Game</p>
                 <p><b>Cluster:</b> mycluster</p>
 
-                <h3>🔍 Logs</h3>
-                <a href="${env.BUILD_URL}">View Build Logs</a>
+                <a href="${env.BUILD_URL}">View Logs</a>
 
                 </body>
                 </html>
-                """,
-                to: "${env.RECIPIENTS}"
+                """
             )
         }
 
