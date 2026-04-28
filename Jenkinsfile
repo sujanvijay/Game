@@ -21,7 +21,7 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/Surya8442/Game.git'
+                git branch: 'main', url: 'https://github.com/sujanvijay/Game.git'
             }
         }
 
