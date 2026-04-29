@@ -229,6 +229,7 @@ pipeline {
                 emailext(
                     subject: "🚀 SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                     mimeType: 'text/html',
+                    from: "sujanvijay2311@gmail.com",
                     to: "${env.RECIPIENTS}",
                     body: """
                     <html>
