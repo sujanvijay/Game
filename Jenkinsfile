@@ -231,7 +231,7 @@ pipeline {
                     mimeType: 'text/html',
                     from: "sujanvijay2311@gmail.com",
                     to: "${env.RECIPIENTS}",
-                    body: """
+                    body: "Deployment Successful"
                     <html>
                     <body>
 
