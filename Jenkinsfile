@@ -12,7 +12,7 @@ pipeline {
 
         KUBECONFIG = '/var/lib/jenkins/.kube/config'
 
-        NEXUS_URL = "http://100.26.41.33:8081/repository/nodejs-game/"
+        NEXUS_URL = "http://13.222.158.174:8081/repository/nodejs-game/"
         RECIPIENTS = "sujanvijay2311@gmail.com"
 
         CLUSTER_NAME = "mycluster"
