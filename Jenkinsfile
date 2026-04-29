@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     tools {
-        nodejs 'NodeJS18'   // Uses NodeJS configured in Jenkins
+        nodejs 'NodeJS18'
     }
 
     environment {
@@ -21,27 +21,23 @@ pipeline {
 
     stages {
 
-        // ===============================
         stage('Checkout Code') {
             steps {
                 git branch: 'main', url: 'https://github.com/sujanvijay/Game.git'
             }
         }
 
-        // ===============================
         stage('Install Dependencies') {
             steps {
                 sh 'npm install'
             }
         }
 
-        // ===============================
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sq') {
                     script {
                         def scannerHome = tool 'sonar-scanner'
-
                         sh """
                         ${scannerHome}/bin/sonar-scanner \
                         -Dsonar.projectKey=game \
@@ -54,14 +50,12 @@ pipeline {
             }
         }
 
-        // ===============================
         stage('Build Application') {
             steps {
                 sh 'npm run build'
             }
         }
 
-        // ===============================
         stage('Package Artifact') {
             steps {
                 sh '''
@@ -74,7 +68,6 @@ pipeline {
             }
         }
 
-        // ===============================
         stage('Upload to Nexus') {
             steps {
                 withCredentials([usernamePassword(
@@ -91,7 +84,6 @@ pipeline {
             }
         }
 
-        // ===============================
         stage('Docker Build') {
             steps {
                 sh '''
@@ -101,7 +93,6 @@ pipeline {
             }
         }
 
-        // ===============================
         stage('Push to DockerHub') {
             steps {
                 withCredentials([usernamePassword(
@@ -118,75 +109,28 @@ pipeline {
             }
         }
 
-        // ===============================
         stage('Deploy to Kubernetes') {
             steps {
                 sh '''
                 aws eks update-kubeconfig --region us-east-1 --name $CLUSTER_NAME
-
                 kubectl apply -f deployment.yml
                 kubectl apply -f service.yml
                 '''
             }
         }
 
-        // ===============================
-        stage('Install Helm (GLOBAL FIX)') {
-            steps {
-                sh '''
-                if ! command -v helm &> /dev/null
-                then
-                    echo "Installing Helm globally..."
-
-                    curl -LO https://get.helm.sh/helm-v3.14.0-linux-amd64.tar.gz
-                    tar -zxvf helm-v3.14.0-linux-amd64.tar.gz
-                    sudo mv linux-amd64/helm /usr/local/bin/helm
-                fi
-
-                helm version
-                '''
-            }
-        }
-
-        // ===============================
-        stage('Deploy Monitoring (Prometheus + Grafana)') {
+        stage('Deploy Monitoring') {
             steps {
                 sh '''
                 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
                 helm repo update
-
                 helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
                 --namespace monitoring --create-namespace
                 '''
             }
         }
-
-        // ===============================
-        stage('Expose Grafana') {
-            steps {
-                sh '''
-                sleep 30
-
-                kubectl patch svc monitoring-grafana \
-                -n monitoring \
-                -p '{"spec": {"type": "LoadBalancer"}}'
-                '''
-            }
-        }
-
-        // ===============================
-        stage('Expose Prometheus') {
-            steps {
-                sh '''
-                kubectl patch svc monitoring-kube-prometheus-prometheus \
-                -n monitoring \
-                -p '{"spec": {"type": "LoadBalancer"}}'
-                '''
-            }
-        }
     }
 
-    // ==========================================
     post {
 
         success {
@@ -198,7 +142,6 @@ pipeline {
                 def GRAFANA_URL = ""
                 def PROM_URL = ""
 
-                // Retry logic (VERY IMPORTANT for AWS LB delay)
                 for (int i = 0; i < 6; i++) {
 
                     APP_URL = sh(
@@ -223,15 +166,24 @@ pipeline {
                     sleep 20
                 }
 
+                // DEBUG LOGS
+                echo "APP_URL: ${APP_URL}"
+                echo "GRAFANA_URL: ${GRAFANA_URL}"
+                echo "PROM_URL: ${PROM_URL}"
+
+                // SAFE URL HANDLING (CRITICAL FIX)
+                def safeAppUrl = APP_URL ? "http://${APP_URL}" : "Not Available"
+                def safeGrafanaUrl = GRAFANA_URL ? "http://${GRAFANA_URL}" : "Not Available"
+                def safePromUrl = PROM_URL ? "http://${PROM_URL}:9090" : "Not Available"
+
                 def DOCKER_IMAGE = "${DOCKER_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
 
-                // ================= EMAIL FIX =================
                 emailext(
-                    subject: "🚀 SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    subject: "SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                     mimeType: 'text/html',
                     from: "sujanvijay2311@gmail.com",
                     to: "${env.RECIPIENTS}",
-                    body: "Deployment Successful"
+                    body: """
                     <html>
                     <body>
 
@@ -244,16 +196,16 @@ pipeline {
                     <p>${DOCKER_IMAGE}</p>
 
                     <h3>Application</h3>
-                    <a href="http://${APP_URL}">${APP_URL}</a>
+                    <p>${safeAppUrl}</p>
 
                     <h3>Grafana</h3>
-                    <a href="http://${GRAFANA_URL}">${GRAFANA_URL}</a>
+                    <p>${safeGrafanaUrl}</p>
 
                     <h3>Prometheus</h3>
-                    <a href="http://${PROM_URL}:9090">${PROM_URL}</a>
+                    <p>${safePromUrl}</p>
 
                     <h3>Jenkins</h3>
-                    <a href="${env.BUILD_URL}">Build Link</a>
+                    <p>${env.BUILD_URL}</p>
 
                     </body>
                     </html>
@@ -264,8 +216,9 @@ pipeline {
 
         failure {
             emailext(
-                subject: "❌ FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                subject: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                 mimeType: 'text/html',
+                from: "sujanvijay2311@gmail.com",
                 to: "${env.RECIPIENTS}",
                 body: """
                 <html>
@@ -276,7 +229,7 @@ pipeline {
                 <p><b>Project:</b> Sliding Puzzle Game</p>
                 <p><b>Cluster:</b> mycluster</p>
 
-                <a href="${env.BUILD_URL}">View Logs</a>
+                <p>${env.BUILD_URL}</p>
 
                 </body>
                 </html>
