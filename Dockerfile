@@ -14,6 +14,6 @@ RUN npm install http-server -g
 RUN mkdir /public
 WORKDIR /public
 COPY --from=builder /usr/src/app/dist/ ./
-EXPOSE 8080
+EXPOSE 3000
 USER 1000
-CMD ["http-server"]
+CMD ["http-server", "-a", "0.0.0.0", "-p", "3000"]
